@@ -21,7 +21,7 @@ yume_view *yume_get_view();
         .type = YUME__SIZING_TYPE_FIT \
      }                                \
 
-#define YUME_SIZING_GROW(...) (yume_sizing_axis){ .size = { .bounds = { __VA_ARGS__ } }, .type = YUME__SIZING_TYPE_GROW }
+#define YUME_SIZING_FLEX(...) (yume_sizing_axis){ .size = { .bounds = { __VA_ARGS__ } }, .type = YUME__SIZING_TYPE_GROW }
 #define YUME_SIZING_PERCENT(percent_of_parent) (yume_sizing_axis){ .size = { .percent = percent_of_parent }, .type = YUME__SIZING_TYPE_PERCENT }
 #define YUME_SIZING_FIXED(s) (yume_sizing_axis){ .size = { .bounds = { .min = s, .max = s} }, .type = YUME__SIZING_TYPE_FIXED } 
 
@@ -49,7 +49,7 @@ typedef struct {
 
 typedef enum {
     YUME__SIZING_TYPE_FIT = 0,
-    YUME__SIZING_TYPE_GROW,
+    YUME__SIZING_TYPE_FLEX,
     YUME__SIZING_TYPE_PERCENT,
     YUME__SIZING_TYPE_FIXED,
 } yume__sizing_type;
@@ -152,7 +152,7 @@ void yume_end_definition() {}
 int main(void)
 {
     yume_begin_definition();
-    YUME({ .layout.sizing = { .width = YUME_SIZING_FIXED(100), .height = YUME_SIZING_GROW(0, 100) }}) {
+    YUME({ .layout.sizing = { .width = YUME_SIZING_FIXED(100), .height = YUME_SIZING_FLEX(0, 100) }}) {
         YUME({ .layout.sizing = { .width = YUME_SIZING_FIXED(100), .height = YUME_SIZING_GROW(0, 100) }});
     }
     yume_end_definition();
