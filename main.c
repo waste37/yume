@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stddef.h>
 
 
 /* Opaque handle to the library context. A view is nowthing more than a
@@ -12,11 +13,39 @@ yume_view *yume_create_view();
 void yume_set_view(yume_view *view);
 yume_view *yume_get_view();
 
+#define YUME_SIZING_FIT(...)          \
+    (yume_sizing_axis){               \
+        .size = {                     \
+            .bounds = { __VA_ARGS__ } \
+        },                            \
+        .type = YUME__SIZING_TYPE_FIT \
+     }                                \
 
-#define YUME_SIZING_FIT(...) (yume_sizing_axis){ .size = { .bounds = { __VA_ARGS__ } } .type = YUME__SIZING_TYPE_FIT }
-#define YUME_SIZING_GROW(...) (yume_sizing_axis){ .size = { .bounds = { __VA_ARGS__ } } .type = YUME__SIZING_TYPE_GROW }
-#define YUME_SIZING_PERCENT(percent_of_parent) (yume_sizing_axis){ .size = { .percent = percent_of_parent } .type = YUME__SIZING_TYPE_PERCENT }
-#define YUME_SIZING_FIXED(size) (yume_sizing_axis){ .size = { .bounds = { size, size } } .type = YUME__SIZING_TYPE_FIXED }
+#define YUME_SIZING_GROW(...) (yume_sizing_axis){ .size = { .bounds = { __VA_ARGS__ } }, .type = YUME__SIZING_TYPE_GROW }
+#define YUME_SIZING_PERCENT(percent_of_parent) (yume_sizing_axis){ .size = { .percent = percent_of_parent }, .type = YUME__SIZING_TYPE_PERCENT }
+#define YUME_SIZING_FIXED(s) (yume_sizing_axis){ .size = { .bounds = { .min = s, .max = s} }, .type = YUME__SIZING_TYPE_FIXED } 
+
+static uint8_t YUME__MAIN_MACRO_HELPER = 0; 
+
+#define YUME(...)                                                                        \
+    for (                                                                                \
+        YUME__MAIN_MACRO_HELPER = (                                                      \
+            yume__open_node(),                                                           \
+            yume__configure_open_node(((yume__config_wrapper){ __VA_ARGS__ }).wrapped),  \
+            0);                                                                          \
+        YUME__MAIN_MACRO_HELPER < 1;                                                     \
+        YUME__MAIN_MACRO_HELPER = 1, yume__close_node()                                  \
+    )                                                                                    \
+
+typedef struct {
+    ptrdiff_t len;
+    char *ptr;
+} yume_str;
+
+typedef struct {
+    uint32_t id;
+    yume_str string_id;
+} yume_id;
 
 typedef enum {
     YUME__SIZING_TYPE_FIT = 0,
@@ -65,12 +94,12 @@ typedef enum {
     YUME_ORIENTATION_HORIZONTAL,
 } yume_layout_orientation;
 
-/*This struct specifies the layout of a node: size, orientation of children, padding etc. */
+/* This struct specifies the layout of a node: size, orientation of children, padding etc. */
 typedef struct {
     yume_sizing sizing;
     yume_padding padding;
     uint16_t gap;
-    yume_content_alignemnt align_content;
+    yume_content_alignment align_content;
     yume_layout_orientation orientation;
 } yume_layout_config;
 
@@ -80,8 +109,9 @@ typedef struct {
 } yume_image_config;
 
 #define YUME_COLOR(hex) (yume_color){ .a = (hex >> 24) & 0xff, .r = (hex >> 16) & 0xff, .g = (hex >> 8) & 0xff, .b = hex & 0xff }
-typedef struct { float a, r, g, b } yume_color;
+typedef struct { float a, r, g, b; } yume_color;
 
+#define YUME_BORDER_ALL(px) (yume_border_width) { px, px, px, px }
 typedef struct {
     uint16_t left;
     uint16_t right;
@@ -100,7 +130,7 @@ typedef struct {
  * Every node is implicitly treated in a similar fashion to the CSS flexbox. */
 typedef struct {
     /* User passed id, used to identify nodes. */
-    yume_element_id id;
+    yume_id id;
     /* All the possible options on the layout of the node and of its children. */
     yume_layout_config layout;
     /* If image.data is nonzero, the image will be layed over the background color, and alpha blending is done by the renderer */
@@ -111,21 +141,21 @@ typedef struct {
     yume_border_config border;
 } yume_layout_node_config;
 
+typedef struct { yume_layout_node_config wrapped; } yume__config_wrapper;
+void yume__open_node(void) {}
+void yume__configure_open_node(yume_layout_node_config) {}
+void yume__close_node(void) {}
 
-static uint8_t YUME__MAIN_MACRO_HELPER = 0; 
-#define YUME(...)                                            \
-    for (                                                    \
-        YUME__MAIN_MACRO_HELPER = (                          \
-            yume__open_node(),                               \
-            yume_configure_open_node(__VA_ARGS__),           \
-            0);                                              \
-        YUME__MAIN_MACRO_HELPER < 1;                         \
-        YUME__MAIN_MACRO_HELPER = 1, yume__close_node()      \
-    )                                                        \
-
+void yume_begin_definition() {}
+void yume_end_definition() {}
 
 int main(void)
 {
-    printf("Hello, yume!\n");
+    yume_begin_definition();
+    YUME({ .layout.sizing = { .width = YUME_SIZING_FIXED(100), .height = YUME_SIZING_GROW(0, 100) }}) {
+        YUME({ .layout.sizing = { .width = YUME_SIZING_FIXED(100), .height = YUME_SIZING_GROW(0, 100) }});
+    }
+    yume_end_definition();
+
     return 0;
 }
