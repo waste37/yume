@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -61,7 +62,7 @@ typedef struct {
 } yume_padding;
 
 typedef enum {
-    YUME__LAYOUT_ALIGNMENT_START,
+    YUME__LAYOUT_ALIGNMENT_START, /* uninitialized means align children to the beginning of the axis, i.e. top left */
     YUME__LAYOUT_ALIGNMENT_CENTER,
     YUME__LAYOUT_ALIGNMENT_END,
 } yume__layout_alignment;
@@ -72,7 +73,7 @@ typedef struct {
 } yume_content_alignment;
 
 typedef enum {
-    YUME_ORIENTATION_VERTICAL,
+    YUME_ORIENTATION_VERTICAL = 0, /* uninitialized means orient children vertically */ 
     YUME_ORIENTATION_HORIZONTAL,
 } yume_layout_orientation;
 
@@ -135,30 +136,70 @@ void yume_begin_definition();
 void yume_end_definition();
 
 /**** PRIVATE FUNCTIONS and IMPLEMENTATION *******************************************************************/
-
 typedef struct { yume_layout_node_config wrapped; } yume__config_wrapper;
 
 typedef struct {
+    yume_layout_node_config config;
+    int children[100];
+    int children_count;
 } yume__node;
 
 struct yume_view {
     yume__node nodes[100];
+    int node_nesting[100];
+    int node_count;
+    int current_open_node;
+    int nesting;
+    int parent_node_offset;
 };
 
 yume_view *yume__current_view_instance = 0;
 
-void yume__open_node(void) {
-    puts("opening a node");
+yume__node *yume__get_current_node(yume_view *view)
+{
+    return view->nodes + view->current_open_node;
 }
-void yume__configure_open_node(yume_layout_node_config) {
-    puts("configuring a node");
+
+void yume__open_node(void) 
+{
+    assert(view->node_count < 100 && "Max nodes reached!");
+    yume_view *view = yume_get_view();
+    view->node_nesting[view->node_count] = ++view->nesting;
+    view->current_open_node = view->node_count++;
 }
-void yume__close_node(void) {
-    puts("closing a node");
+
+void yume__configure_open_node(yume_layout_node_config configuration) 
+{
+    yume_view *view = yume_get_view();
+    yume__node *node = yume__get_current_node(view);
+    node->config = configuration;
+}
+
+void yume__close_node(void) 
+{
+    yume_view *view = yume_get_view();
+    // the parent is the first node to the left with nesting == view->nestin
+    int closing_index = view->current_open_node;
+    yume__node *closing_node = yume__get_current_node(view);
+
+    view->nesting--;
+    for (int i = view->current_open_node; i >= 0; --i) {
+        if (view->nesting == view->node_nesting[i]) {
+            printf("node %d parent is %d\n", view->current_open_node, i);
+            view->nodes[i].children[view->nodes[i].children_count++] = view->node_count - 1;
+            view->current_open_node = i;
+            break;
+        }
+    }
 }
 
 void yume_begin_definition() 
 {
+    yume_view *view = yume_get_view();
+    view->node_count = 1;
+    view->node_nesting[0] = 0;
+    view->nesting = 0;
+    view->current_open_node = 0;
 }
 
 void yume_end_definition() 
@@ -168,7 +209,7 @@ void yume_end_definition()
 
 yume_view *yume_create_view()
 {
-    // TODO: implement arena to avoid this!
+    // TODO: implement arena to avoid malloc!
     return yume__current_view_instance = malloc(sizeof(yume_view));
 }
 
@@ -186,25 +227,31 @@ int main(void)
 {
     yume_view *view = yume_create_view();
     yume_begin_definition();
-    YUME({ 
-        .layout = {
-            .sizing = { 
-                .width = YUME_SIZING_FIXED(100), .height = YUME_SIZING_FLEX(0, 100)  
-            }, 
-            .orientation = YUME_ORIENTATION_VERTICAL,
-        },
-        .background_color = YUME_COLOR(0x00000000)
-    }) {
+    YUME({}) { // 1
 
-        YUME({ 
+        YUME({}) { // 2
+
+        }
+
+        YUME({}) {  // 3
+            YUME({}) { // 4
+
+                YUME({}); // 5
+            }
+
+            YUME({}) { // 6
+
+            }
+        }
+
+        YUME({ // 7
             .layout.sizing = { 
                 .width = YUME_SIZING_FIXED(100), .height = YUME_SIZING_FLEX(0, 100) 
             },
             .background_color = YUME_COLOR(0x000000ff)
         });
-
     }
     yume_end_definition();
-
+    free(view);
     return 0;
 }
