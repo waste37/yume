@@ -1,32 +1,14 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
 
-
-/* Opaque handle to the library context. A view is nowthing more than a
- * single "page" in the library, and it manages all the state related to it.
- * You will pass it a big enough chunk of memory at startup, and that will be
- * everything it will depend on! */
-typedef struct yume_view yume_view;
-
-yume_view *yume_create_view();
-void yume_set_view(yume_view *view);
-yume_view *yume_get_view();
-
-#define YUME_SIZING_FIT(...)          \
-    (yume_sizing_axis){               \
-        .size = {                     \
-            .bounds = { __VA_ARGS__ } \
-        },                            \
-        .type = YUME__SIZING_TYPE_FIT \
-     }                                \
-
-#define YUME_SIZING_FLEX(...) (yume_sizing_axis){ .size = { .bounds = { __VA_ARGS__ } }, .type = YUME__SIZING_TYPE_GROW }
+#define YUME_SIZING_FIT(...)  (yume_sizing_axis){ .size.bounds = { __VA_ARGS__ }, .type = YUME__SIZING_TYPE_FIT }
+#define YUME_SIZING_FLEX(...) (yume_sizing_axis){ .size.bounds = { __VA_ARGS__ }, .type = YUME__SIZING_TYPE_FLEX }
 #define YUME_SIZING_PERCENT(percent_of_parent) (yume_sizing_axis){ .size = { .percent = percent_of_parent }, .type = YUME__SIZING_TYPE_PERCENT }
-#define YUME_SIZING_FIXED(s) (yume_sizing_axis){ .size = { .bounds = { .min = s, .max = s} }, .type = YUME__SIZING_TYPE_FIXED } 
+#define YUME_SIZING_FIXED(s) (yume_sizing_axis){ .size.bounds = { .min = s, .max = s }, .type = YUME__SIZING_TYPE_FIXED } 
 
 static uint8_t YUME__MAIN_MACRO_HELPER = 0; 
-
 #define YUME(...)                                                                        \
     for (                                                                                \
         YUME__MAIN_MACRO_HELPER = (                                                      \
@@ -141,19 +123,86 @@ typedef struct {
     yume_border_config border;
 } yume_layout_node_config;
 
-typedef struct { yume_layout_node_config wrapped; } yume__config_wrapper;
-void yume__open_node(void) {}
-void yume__configure_open_node(yume_layout_node_config) {}
-void yume__close_node(void) {}
+/* Opaque handle to the library context. A view is nowthing more than a
+ * single "page" in the library, and it manages all the state related to it.
+ * You will pass it a big enough chunk of memory at startup, and that will be
+ * everything it will depend on! */
+typedef struct yume_view yume_view;
+yume_view *yume_create_view();
+void yume_set_view(yume_view *view);
+yume_view *yume_get_view();
+void yume_begin_definition();
+void yume_end_definition();
 
-void yume_begin_definition() {}
-void yume_end_definition() {}
+/**** PRIVATE FUNCTIONS and IMPLEMENTATION *******************************************************************/
+
+typedef struct { yume_layout_node_config wrapped; } yume__config_wrapper;
+
+typedef struct {
+} yume__node;
+
+struct yume_view {
+    yume__node nodes[100];
+};
+
+yume_view *yume__current_view_instance = 0;
+
+void yume__open_node(void) {
+    puts("opening a node");
+}
+void yume__configure_open_node(yume_layout_node_config) {
+    puts("configuring a node");
+}
+void yume__close_node(void) {
+    puts("closing a node");
+}
+
+void yume_begin_definition() 
+{
+}
+
+void yume_end_definition() 
+{
+}
+
+
+yume_view *yume_create_view()
+{
+    // TODO: implement arena to avoid this!
+    return yume__current_view_instance = malloc(sizeof(yume_view));
+}
+
+void yume_set_view(yume_view *view)
+{
+    yume__current_view_instance = view;
+}
+
+yume_view *yume_get_view()
+{
+    return yume__current_view_instance;
+}
 
 int main(void)
 {
+    yume_view *view = yume_create_view();
     yume_begin_definition();
-    YUME({ .layout.sizing = { .width = YUME_SIZING_FIXED(100), .height = YUME_SIZING_FLEX(0, 100) }}) {
-        YUME({ .layout.sizing = { .width = YUME_SIZING_FIXED(100), .height = YUME_SIZING_GROW(0, 100) }});
+    YUME({ 
+        .layout = {
+            .sizing = { 
+                .width = YUME_SIZING_FIXED(100), .height = YUME_SIZING_FLEX(0, 100)  
+            }, 
+            .orientation = YUME_ORIENTATION_VERTICAL,
+        },
+        .background_color = YUME_COLOR(0x00000000)
+    }) {
+
+        YUME({ 
+            .layout.sizing = { 
+                .width = YUME_SIZING_FIXED(100), .height = YUME_SIZING_FLEX(0, 100) 
+            },
+            .background_color = YUME_COLOR(0x000000ff)
+        });
+
     }
     yume_end_definition();
 
