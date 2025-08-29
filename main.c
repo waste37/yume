@@ -4,7 +4,19 @@
 #include <stddef.h>
 #include <stdlib.h>
 
-#define YUME_SIZING_FIT(...)  (yume_sizing_axis){ .size.bounds = { __VA_ARGS__ }, .type = YUME__SIZING_TYPE_FIT }
+/* MACROS *****************************************************************************************/
+
+#define sizeof(x)  (ptrdiff_t)sizeof(x)
+#define countof(x) (sizeof(x)/sizeof(x[0]))
+#define lengthof(x)  (countof(x) - 1)
+#define alignof(x)  _Alignof(x)
+
+#define YUME_MAX_HEIGHT (1 << 20)
+#define YUME_COLOR(hex) (yume_color){ .a = (hex >> 24) & 0xff, .r = (hex >> 16) & 0xff, .g = (hex >> 8) & 0xff, .b = hex & 0xff }
+#define YUME_S(s) (yume_str){ .ptr = s, .len = lengthof(s) }
+#define YUME_BORDER_ALL(px) (yume_border_width) { px, px, px, px }
+#define YUME_PADDING_ALL(px) (yume_padding) { px, px, px, px }
+#define YUME_SIZING_FILL(...)  (yume_sizing_axis){ .size.bounds = { __VA_ARGS__ }, .type = YUME__SIZING_TYPE_FILL }
 #define YUME_SIZING_FLEX(...) (yume_sizing_axis){ .size.bounds = { __VA_ARGS__ }, .type = YUME__SIZING_TYPE_FLEX }
 #define YUME_SIZING_PERCENT(percent_of_parent) (yume_sizing_axis){ .size = { .percent = percent_of_parent }, .type = YUME__SIZING_TYPE_PERCENT }
 #define YUME_SIZING_FIXED(s) (yume_sizing_axis){ .size.bounds = { .min = s, .max = s }, .type = YUME__SIZING_TYPE_FIXED } 
@@ -20,10 +32,26 @@ static uint8_t YUME__MAIN_MACRO_HELPER = 0;
         YUME__MAIN_MACRO_HELPER = 1, yume__close_node()                                  \
     )                                                                                    \
 
+/* BASIC TYPES ************************************************************************************/
+
 typedef struct {
     ptrdiff_t len;
     char *ptr;
 } yume_str;
+
+typedef struct { 
+    float a, r, g, b; 
+} yume_color;
+
+typedef struct {
+    float x, y;
+} yume_vec;
+
+typedef struct {
+    float x, y, w, h;
+} yume_aabb;
+
+/* CONFIGURATION OPTIONS **************************************************************************/
 
 typedef struct {
     uint32_t id;
@@ -31,10 +59,10 @@ typedef struct {
 } yume_id;
 
 typedef enum {
-    YUME__SIZING_TYPE_FIT = 0,
-    YUME__SIZING_TYPE_FLEX,
-    YUME__SIZING_TYPE_PERCENT,
-    YUME__SIZING_TYPE_FIXED,
+    YUME__SIZING_TYPE_FILL = 0, /* Grow trying to fill the parent */
+    YUME__SIZING_TYPE_FLEX,     /* Grow trying to fit the children */
+    YUME__SIZING_TYPE_PERCENT,  /* Size relative to the parent */
+    YUME__SIZING_TYPE_FIXED,    /* Size fixed */
 } yume__sizing_type;
 
 typedef struct {
@@ -91,10 +119,7 @@ typedef struct {
     void *data;
 } yume_image_config;
 
-#define YUME_COLOR(hex) (yume_color){ .a = (hex >> 24) & 0xff, .r = (hex >> 16) & 0xff, .g = (hex >> 8) & 0xff, .b = hex & 0xff }
-typedef struct { float a, r, g, b; } yume_color;
 
-#define YUME_BORDER_ALL(px) (yume_border_width) { px, px, px, px }
 typedef struct {
     uint16_t left;
     uint16_t right;
@@ -106,6 +131,8 @@ typedef struct {
     yume_border_width width;
     yume_color color;
 } yume_border_config;
+
+/* CONFIGURATION OPTIONS **************************************************************************/
 
 /* This struct will be the primary interface for the user to specify the look of a view node.
  * Each node configuration will be internally represented using the concepts defined here.
@@ -124,12 +151,13 @@ typedef struct {
     yume_border_config border;
 } yume_layout_node_config;
 
+
 /* Opaque handle to the library context. A view is nowthing more than a
  * single "page" in the library, and it manages all the state related to it.
  * You will pass it a big enough chunk of memory at startup, and that will be
  * everything it will depend on! */
 typedef struct yume_view yume_view;
-yume_view *yume_create_view();
+yume_view *yume_create_view(yume_vec dimensions);
 void yume_set_view(yume_view *view);
 yume_view *yume_get_view();
 void yume_begin_definition();
@@ -142,28 +170,32 @@ typedef struct {
     yume_layout_node_config config;
     int children[100];
     int children_count;
-} yume__node;
+} yume__layout_node;
 
 struct yume_view {
-    yume__node nodes[100];
+    yume_vec dimensions;
+
+    /* Scene tree implementation */
+    yume__layout_node nodes[100];
     int node_nesting[100];
     int node_count;
     int current_open_node;
     int nesting;
-    int parent_node_offset;
+
+
 };
 
 yume_view *yume__current_view_instance = 0;
 
-yume__node *yume__get_current_node(yume_view *view)
+yume__layout_node *yume__get_current_node(yume_view *view)
 {
     return view->nodes + view->current_open_node;
 }
 
 void yume__open_node(void) 
 {
-    assert(view->node_count < 100 && "Max nodes reached!");
     yume_view *view = yume_get_view();
+    assert(view->node_count < 100 && "Max nodes reached!");
     view->node_nesting[view->node_count] = ++view->nesting;
     view->current_open_node = view->node_count++;
 }
@@ -171,16 +203,16 @@ void yume__open_node(void)
 void yume__configure_open_node(yume_layout_node_config configuration) 
 {
     yume_view *view = yume_get_view();
-    yume__node *node = yume__get_current_node(view);
+    yume__layout_node *node = yume__get_current_node(view);
     node->config = configuration;
+    // here we could set the min dimensions?
 }
 
 void yume__close_node(void) 
 {
     yume_view *view = yume_get_view();
-    // the parent is the first node to the left with nesting == view->nestin
     int closing_index = view->current_open_node;
-    yume__node *closing_node = yume__get_current_node(view);
+    yume__layout_node *closing_node = yume__get_current_node(view);
 
     view->nesting--;
     for (int i = view->current_open_node; i >= 0; --i) {
@@ -191,26 +223,54 @@ void yume__close_node(void)
             break;
         }
     }
+    // here we could grow them since we are already visiting
+    for (int i = 0; i < closing_node->children_count; ++i) {
+        int child_index = closing_node->children[i];
+        yume__layout_node *child = view->nodes + child_index;
+        // if the closing_node is grow, try to grow it.
+        // if the child node is fit, try to fit
+    }
 }
+
+void yume__reset_view_memory(yume_view *view)
+{
+    view->nesting = -1;
+    view->node_count = 0;
+}
+
 
 void yume_begin_definition() 
 {
     yume_view *view = yume_get_view();
-    view->node_count = 1;
-    view->node_nesting[0] = 0;
-    view->nesting = 0;
-    view->current_open_node = 0;
+    yume__reset_view_memory(view);
+    yume__open_node();
+    yume__configure_open_node((yume_layout_node_config) {
+        .id = { .string_id = YUME_S("yume__root_node"), .id = 0, },
+        .background_color = YUME_COLOR(0x00000000),
+        .layout = {
+            .sizing = { .width = YUME_SIZING_FIXED(view->dimensions.x), .height = YUME_SIZING_FLEX(view->dimensions.y, YUME_MAX_HEIGHT) },
+            .orientation = YUME_ORIENTATION_VERTICAL,
+            .gap = 0,
+            .align_content = { YUME__LAYOUT_ALIGNMENT_START, YUME__LAYOUT_ALIGNMENT_START },
+            .padding = YUME_PADDING_ALL(10)
+        },
+    });
+
 }
 
 void yume_end_definition() 
 {
+    yume__close_node();
 }
 
 
-yume_view *yume_create_view()
+yume_view *yume_create_view(yume_vec dimensions)
 {
     // TODO: implement arena to avoid malloc!
-    return yume__current_view_instance = malloc(sizeof(yume_view));
+    yume_view *view = malloc(sizeof *view);
+    yume_set_view(view);
+    view->dimensions = dimensions;
+    yume__reset_view_memory(view);
 }
 
 void yume_set_view(yume_view *view)
@@ -225,7 +285,7 @@ yume_view *yume_get_view()
 
 int main(void)
 {
-    yume_view *view = yume_create_view();
+    yume_view *view = yume_create_view((yume_vec){1024, 728});
     yume_begin_definition();
     YUME({}) { // 1
 
@@ -251,6 +311,7 @@ int main(void)
             .background_color = YUME_COLOR(0x000000ff)
         });
     }
+
     yume_end_definition();
     free(view);
     return 0;
