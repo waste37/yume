@@ -52,6 +52,10 @@ typedef struct {
     float x, y, w, h;
 } yume_aabb;
 
+typedef struct {
+    unsigned char *beg, *end;
+} yume_arena;
+
 /* CONFIGURATION OPTIONS **************************************************************************/
 
 typedef struct {
@@ -172,6 +176,24 @@ void yume_end_definition();
 
 
 #ifdef YUME_IMPLEMENTATION
+
+#define yume_new(...)            yume_newx(__VA_ARGS__,new4,new3,new2)(__VA_ARGS__)
+#define yume_newx(a,b,c,d,e,...) e
+#define yume_new2(a, t)          (t *)yume__arena_alloc(a, sizeof(t), alignof(t), 1, 0)
+#define yume_new3(a, t, n)       (t *)yume__arena_alloc(a, sizeof(t), alignof(t), n, 0)
+#define yume_new4(a, t, n, f)    (t *)yume__arena_alloc(a, sizeof(t), alignof(t), n, f)
+
+void *yume__arena_alloc(yume_arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t count, int flags)
+{
+    (void)(flags);
+    ptrdiff_t padding = -(uintptr_t)a->beg & (align - 1);
+    ptrdiff_t available = a->end - a->beg - padding;
+    if (available < 0 || count > available/size) { return 0; }
+    void *p = a->beg + padding;
+    a->beg += padding + count*size;
+    return p;
+    //return yume_memset(p, 0, count*size);
+}
 
 typedef struct { yume_layout_node_config wrapped; } yume__config_wrapper;
 
